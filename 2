@@ -1,0 +1,56 @@
+rm(list=ls(all=TRUE))							
+library(survival)								
+data<-read.table("D:\\R.txt",header=T)					
+attach(data)
+data
+
+									
+times_start <-c(  rep(start_time_censor, n_censors), rep(start_time_event, n_events) )		
+times_end <-c(  rep(end_time_censor, n_censors), rep(end_time_event, n_events)  )
+		
+#  adding times for patients at risk at last time point				
+times_start <- c(times_start, rep(18,3))					
+times_end <- c(times_end, rep(10000,3))	
+	
+#   Step 5. choose one of these function forms					
+model <- survreg(Surv(times_start, times_end, type="interval2")~1, dist="exponential")  # Exponential function, interval censoring				
+model <- survreg(Surv(times_start, times_end, type="interval2")~1, dist="weibull")   # Weibull function, interval censoring					
+model <- survreg(Surv(times_start, times_end, type="interval2")~1, dist="logistic")   # Logistic function, interval censoring				
+model <- survreg(Surv(times_start, times_end, type="interval2")~1, dist="lognormal")   # Lognormal function, interval censoring				
+model <- survreg(Surv(times_start, times_end, type="interval2")~1, dist="loglogistic")   # Loglogistic function, interval censoring				
+			
+#   Compare AIC values										
+n_patients <- sum(n_events) +  sum(n_censors)  		 
+					
+-2*summary(model)$loglik[1] + 1*2          #  AIC for exponential distribution											
+-2*summary(model)$loglik[1] + 1*log(n_patients)   #  BIC exponential												
+-2*summary(model)$loglik[1] + 2*2          #  AIC for 2-parameter distributions											
+-2*summary(model)$loglik[1] + 2*log(n_patients)   #  BIC for 2-parameter distributions										
+intercept <- summary(model)$table[1]   # intercept parameter												
+log_scale <- summary(model)$table[2]   # log scale parameter												
+												
+#  output for the example of the Weibull distribution												
+lambda <- 1/ (exp(intercept))^ (1/exp(log_scale))    # l for Weibull, where S(t) = exp(-lt^g)									
+gamma <- 1/exp(log_scale)     # g for Weibull, where S(t) = exp(-lt^g)											
+(1/lambda)^(1/gamma) * gamma(1+1/gamma)    # mean time for Weibull distrubtion												
+												
+												
+#  For the Probabilistic Sensitivity Analysis, we need the Cholesky matrix, which captures the variance and covariance of parameters												
+t(chol(summary(model)$var))    #  Cholesky matrix												
+												
+#  Simulate variability of mean for Weibull												
+library(MASS)												
+												
+simulations <- 10000  # number of simulations for standard deviation of mean												
+sim_parameters <- mvrnorm(n=simulations, summary(model)$table[,1],  summary(model)$var  )   # simulates simulations from multivariate normal						
+intercepts <- sim_parameters[,1]   # intercept parameters					
+log_scales <- sim_parameters[,2]   # log scale parameters					
+lambdas <- 1/ (exp(intercepts))^ (1/exp(log_scales))    # l for Weibull, where S(t) = exp(-lt^g)												
+gammas <- 1/exp(log_scales)     # g for Weibull, where S(t) = exp(-lt^g)			
+means <- (1/lambdas)^(1/gammas) * gamma(1+1/gammas)    # mean times for Weibull distrubtion	
+sd(means)   # standard deviation of mean survival
+						
+# consider adding this (from Arman Oct 2016) to plot KM						
+km <- survfit(Surv(times_start, times_end, type="interval2")~ 1)				
+summary(km)											
+plot(km, xmax=600, xlab=""Time (Days)"", ylab=""Survival Probability"")												
